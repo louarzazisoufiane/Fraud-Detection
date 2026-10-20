@@ -14,7 +14,7 @@ TOPICS = [
         "min.cleanable.dirty.ratio":"0.1",
         "segment.ms":"60000",
     }),
-    NewTopic(C.T_DLQ, 1 ,1,config={"retention.ms"=WEEK_MS})
+    NewTopic(C.T_DLQ, 1 ,1,config={"retention.ms":WEEK_MS})
 ]   
 
 def main():
@@ -23,7 +23,7 @@ def main():
         try:
             future.result()
             print({topic})
-        except Exception as exc;
+        except Exception as exc:
             print(f"exc,{topic} {exc}")
 
 
