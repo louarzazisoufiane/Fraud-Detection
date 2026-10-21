@@ -2,6 +2,8 @@ import argparse
 import json 
 import math 
 import random
+import signal
+import sys
 import time
 import uuid
 
@@ -54,7 +56,7 @@ def impossible_travel(acct, rng, now):
     return [make_txn(acct, rng,now), make_txn(acct, rng , now + 2 , city=far)]
 
 def big_ticket(acct, rng, now):
-    return [make_txn(acct, rng , now , ammount= acct.baseline * rng.uniform(15,40))]
+    return [make_txn(acct, rng , now , amount= acct.baseline * rng.uniform(15,40))]
 
 SCENARIOS    = [card_testing_burst, impossible_travel, big_ticket]
 
@@ -72,13 +74,14 @@ class Sender :
 
     def _on_delivery(self, err , msg):
         if err : 
-            self.failed = +1
+            self.failed += 1
             print(f"Delivery failed ,{err}")
 
     def send(self, key , value):
 
         self.producer.produce(C.T_RAW, key = key , value = value, on_delivery= self._on_delivery)
         self.producer.poll(0)
+        self.sent += 1
 
     def send_txn(self, txn):
         self.send(txn["account_id"], json.dumps(txn))
@@ -93,6 +96,8 @@ def main():
     ap.add_argument("--poison-rate", type=float, default=0.002)
     ap.add_argument("--no-warmup", action="store_true")
     ap.add_argument("--seed", type= int )
+    ap.add_argument("--duration", type=float , help="stop after N seconds")
+    ap.add_argument("--max-txns", type=int , help="stop after N produced messages")
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
@@ -107,8 +112,15 @@ def main():
         out.producer.flush()
         print(f"warmup done {out.sent}")
 
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    start = time.time()
     try :
         while True:
+            if args.duration is not None and time.time() - start >= args.duration:
+                break
+            if args.max_txns is not None and out.sent >= args.max_txns:
+                break
+
             acct = rng.choice(accounts)
             roll = rng.random()
             if roll < args.poison_rate :
@@ -121,7 +133,7 @@ def main():
             else:
                 out.send_txn(make_txn(acct, rng , time.time()))
 
-            if out.send % 100 == 0 :
+            if out.sent % 100 == 0 :
                 print(f"sent {out.sent}  failed {out.failed}")
 
             time.sleep(rng.expovariate(args.rate))
@@ -132,5 +144,5 @@ def main():
         out.producer.flush(10)
         print(f"done : sent {out.sent}  failed {out.failed}")
 
-if __name__ = "__main__":
+if __name__ == "__main__":
     main()
